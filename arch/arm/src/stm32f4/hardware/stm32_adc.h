@@ -49,17 +49,6 @@
 #  error Only one STM32 ADC IP version must be selected
 #endif
 
-#if defined(CONFIG_STM32_HAVE_IP_ADC_V1)
-#  if defined(CONFIG_STM32_STM32L15XX)
-#    include "stm32_adc_v1l1.h"   /* Special case for L1 */
-#  else
-#    include "stm32_adc_v1.h"
-#  endif
-#else
-#  error "STM32 ADC IP version not specified"
-#endif
-
-
 /****************************************************************************
  * Pre-processor Definitions
  ****************************************************************************/
@@ -67,27 +56,13 @@
 /* Configuration ************************************************************/
 
 /* This is implementation for STM32 ADC IPv1 - F1, F2, F37x, F4, F7.
- * NOTE: L1 use modified IPv1 (look at chip/stm32_adc_v1l1.h).
  */
 
 #define HAVE_IP_ADC_V1
 #undef HAVE_IP_ADC_V2           /* No ADC IPv2 */
 #undef HAVE_ADC_CLOCK_HSI       /* No ADC clock from HSI */
 #undef HAVE_ADC_POWERDOWN       /* No ADC power down */
-
-/* F1 and F37x have basic version of ADC hardware
- *   - no common ADC registers
- *   - ADCs are not coupled in single ADC block (no common ADC base address)
- *   - no configurable resolution
- *   - no overrun
- *   - ...
- */
-
-#if defined(CONFIG_STM32_HAVE_IP_ADC_V1_BASIC)
-#  define HAVE_BASIC_ADC
-#else
-#  undef HAVE_BASIC_ADC
-#endif
+#undef HAVE_BASIC_ADC
 
 /* VBAT channel support only if no basic ADC */
 
