@@ -8,7 +8,7 @@ from abc import ABC, abstractmethod
 from typing import Generator
 from argparse import Namespace
 
-from tree_sitter import Language, Parser, Tree, Node, Query, Point
+from tree_sitter import Language, Parser, Tree, Node, Point, Query
 from tree_sitter_language_pack import get_language, get_parser
 
 
@@ -27,7 +27,8 @@ class Checker(ABC):
     :param scm: File name holding Tree-sitter queries
     "type scm: String
     """
-    def __init__(self, tree: Tree, parser: Parser, lang: Language, scm: str):
+    def __init__(self, file: Path, tree: Tree, parser: Parser, lang: Language, scm: str):
+        self.file: Path = file
         self.tree: Tree = tree
         self.parser: Parser = parser
         self.lang: Language = lang
@@ -87,17 +88,20 @@ class Checker(ABC):
 
     def info(self, point: Point, text: str) -> None:
         print(
-            f"INFO[{point.row}:{point.column}] "
+            f"{self.file.resolve()}:{point.row + 1}:{point.column}: "
+            f"[INFO] "
             f"{text}")
 
     def warning(self, point: Point, text: str) -> None:
         print(
-            f"WARNING[{point.row}:{point.column}] "
+            f"{self.file.resolve()}:{point.row + 1}:{point.column}: "
+            f"[WARNING] "
             f"{text}")
 
     def error(self, point: Point, text: str) -> None:
         print(
-            f"ERROR[{point.row}:{point.column}] "
+            f"{self.file.resolve()}:{point.row + 1}:{point.column}: "
+            f"[ERROR] "
             f"{text}")
 
     @abstractmethod
@@ -111,29 +115,74 @@ class CChecker(Checker):
     """
     Checker class for analyzing and processing syntax trees for c source files.
     """
+
     def check_style(self) -> None:
-        for node in self.captures["function.body"]:
-            self.__check_function_body(node)
+        for m in self.captures["function.body"]:
+            for n in iter(m.named_children):
+                self.__check_indents(2, n)
 
-    def __check_function_body(self, node: Node):
-        if node.children[0].text != b'{' or node.children[0].is_named:
-            pass
+        for m in self.captures["statement.if"]:
+            self.__check_if_statement(m)
 
-        for n in iter(node.children[1:-1]):
-            match n.type:
-                case 'if_statement':
-                    pass
-                case 'for_statement':
-                    pass
-                case 'while_statement':
-                    pass
-                case 'expression_statement':
-                    pass
-                case _:
-                    pass
+    def __check_indents(self, indent: int, node: Node):
 
-        if node.children[-1].text != b'}' or node.children[0].is_named:
-            pass
+        match node.type:
+            case "if_statement":
+                for n in node.child_by_field_name("consequence").named_children:
+                    self.__check_indents(indent + 4, n)
+            case "while_statement":
+                for n in node.child_by_field_name("body").named_children:
+                    self.__check_indents(indent + 4, n)
+            case "for_statement":
+                for n in node.child_by_field_name("body").named_children:
+                    self.__check_indents(indent + 4, n)
+            case "while_statement":
+                for n in node.child_by_field_name("body").named_children:
+                    self.__check_indents(indent + 4, n)
+            case "switch_statement":
+                for n in node.child_by_field_name("body").named_children:
+                    self.__check_indents(indent + 4, n)
+            case (
+                "return_statement" |
+                "expression_statement"
+            ):
+                for child in node.named_children:
+                    self.__check_indents(indent + 2, child)
+            case _:
+                return
+
+        if node.start_point.column != indent:
+            self.error(node.start_point, "Wrong indentation")
+
+    def  __check_if_statement(self, node: Node) -> None:
+        
+        if (
+            node.prev_sibling is not None and
+            node.prev_sibling.type == 'else'
+        ):
+            indent: int = node.prev_sibling.start_point.column
+        else:
+            indent: int = node.start_point.column
+
+        # unwrap if statement node
+        if_keyword: Node | None = node.child(0)
+        condition: Node | None = node.child_by_field_name("condition")
+        consequence: Node | None = node.child_by_field_name("consequence")
+        alternative: Node | None = node.child_by_field_name("alternative")
+
+
+        # Between keyword end and parentheses there should be an whitespace
+        if (condition.start_point.column - if_keyword.end_point.column) != 1:
+            self.error(if_keyword.end_point, "Missing whitespace after keyword")
+
+        # Open braket should be on separate line
+        if consequence.start_point.row == condition.start_point.row:
+            self.error(condition.start_point, "Left bracket not on separate line")
+
+        # Open braket should be indented
+        if consequence.start_point.column != indent + 2:
+            print(consequence.text.decode())
+            self.error(consequence.start_point, f"Insufficient indentation {consequence.start_point.column} : {indent + 2}" )
 
 class NxStyle():
     """
@@ -176,22 +225,21 @@ class NxStyle():
         :param args: Attribute storage resolved by argparge
         :type args: Namespace
         """
-        file_path = Path(args.file).as_posix()
-        file_extension = Path(args.file).suffix
+        file_path = Path(args.file)
 
         try:
-            with open(file_path, 'rb') as fd:
+            with open(file_path.as_posix(), 'rb') as fd:
                 src = fd.read()
         except FileNotFoundError as e:
             print(f"{e}")
             sys.exit(1)
 
-        match file_extension:
+        match file_path.suffix:
             case '.c':
                 lang = get_language('c')
                 parser = get_parser('c')
                 tree = parser.parse(src)
-                self.checker = CChecker(tree, parser, lang, 'c.scm')
+                self.checker = CChecker(file_path, tree, parser, lang, 'c.scm')
 
             case '.h':
                 lang = get_language('c')
