@@ -87,17 +87,17 @@ class Checker(ABC):
 
     def info(self, point: Point, text: str) -> None:
         print(
-            f"INFO[{point.row}:{point.column}] "
+            f"INFO[{point.row + 1}:{point.column}] "
             f"{text}")
 
     def warning(self, point: Point, text: str) -> None:
         print(
-            f"WARNING[{point.row}:{point.column}] "
+            f"WARNING[{point.row + 1}:{point.column}] "
             f"{text}")
 
     def error(self, point: Point, text: str) -> None:
         print(
-            f"ERROR[{point.row}:{point.column}] "
+            f"ERROR[{point.row + 1}:{point.column}] "
             f"{text}")
 
     @abstractmethod
@@ -116,13 +116,27 @@ class CChecker(Checker):
             self.__check_function_body(node)
 
     def __check_function_body(self, node: Node):
-        if node.children[0].text != b'{' or node.children[0].is_named:
+        # Indents are checked relative to the curent node.
+        indent: int = node.children[0].start_point.column
+
+        # The first child should be unnamed.  Here begins the function body block
+        # Function body should always start with indent 0
+        if node.children[0].text == b'{' or not node.children[0].is_named:
+            if indent > 0:
+                self.error(node.children[0].start_point, "Insufficient indentation")
+        else:
             pass
 
-        for n in iter(node.children[1:-1]):
+        for n in iter(node.named_children):
+
+            # Check indent for the child node. Function body should offset by 2 spaces
+            # Handle comments separately
+            if n.start_point.column > indent + 2 and n.type != 'comment':
+                self.error(n.start_point, "Insufficient indentation")
+
             match n.type:
                 case 'if_statement':
-                    pass
+                    self.__check_if_statement(n)
                 case 'for_statement':
                     pass
                 case 'while_statement':
@@ -132,8 +146,47 @@ class CChecker(Checker):
                 case _:
                     pass
 
-        if node.children[-1].text != b'}' or node.children[0].is_named:
-            pass
+        # The last child should be unnamed.  Here ends the function body block
+        if node.children[-1].text != b'}' or node.children[-1].is_named:
+            if indent > 0:
+                self.error(node.children[0].start_point, "Insufficient indentation")
+
+    def  __check_if_statement(self, node: Node) -> None:
+        indent: int = node.start_point.column
+
+        # Unwrap children
+        if node.child_count == 4:
+            # If case
+            if_keyword, condition, consequence, alternative = node.children
+        else:
+            # If-else case
+            if_keyword, condition, consequence = node.children
+
+        print(condition.child_by_field_name("<"))
+
+        # Between keyword end and parentheses there should be an whitespace
+        if (condition.start_point.column - if_keyword.end_point.column) != 1:
+            self.error(if_keyword.end_point, "Missing whitespace after keyword")
+
+        # Never space after the left parentheses
+        if (condition.children[1].start_point.column -
+            condition.children[0].end_point.column) != 0:
+            self.error(condition.children[0].end_point, "Missing whitespace after keyword")
+
+        # Never space before the right parentheses
+        if (condition.children[-1].start_point.column -
+            condition.children[-2].end_point.column) != 0:
+            self.error(condition.children[-1].end_point, "Missing whitespace after keyword")
+
+        # Open braket should be on separate line
+        if consequence.start_point.row == condition.start_point.row:
+            self.error(condition.start_point, "Left bracket not on separate line")
+
+        # Open braket should be indented
+        if consequence.start_point.column != indent + 2:
+            self.error(consequence.start_point, "Insufficient indentation")
+            
+        
 
 class NxStyle():
     """
