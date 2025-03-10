@@ -1,17 +1,20 @@
 #!/usr/bin/env python3
 import argparse
-from cmds.nxstyle import NxStyle
+from cmds.nxstyle_cmd import NxStyle_cmd
+
 
 class NxTool():
     def __init__(self):
-        self.argparser: argparse.ArgumentParser = argparse.ArgumentParser(description="My CLI tool")
+        self.argparser: argparse.ArgumentParser = argparse.ArgumentParser(
+            description="My CLI tool"
+        )
 
         self.argsubparser = self.argparser.add_subparsers(
             title='commands',
             required=True
         )
 
-        self.nxstyle: NxStyle = NxStyle(self.argsubparser)
+        self.nxstyle: NxStyle_cmd = NxStyle_cmd(self.argsubparser)
 
     def run(self):
         """
@@ -19,6 +22,7 @@ class NxTool():
         """
         args: argparse.Namespace = self.argparser.parse_args()
         args.func(args)
+
 
 nxt = NxTool()
 nxt.run()
