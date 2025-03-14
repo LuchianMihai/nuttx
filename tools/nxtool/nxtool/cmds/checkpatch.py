@@ -8,6 +8,7 @@ import shutil
 import pty
 import importlib.resources
 
+from nxtool.nxstyle.nxstyle import Checker, CChecker
 
 class NxCheckpatch():
     """
@@ -44,6 +45,8 @@ class NxCheckpatch():
 
         self.argparser.set_defaults(func=self.__run)
 
+        self.checker: Checker | None = None
+
     def __run(self, args: Namespace) -> None:
         """
         This method is an entrypoint for "checkpatch" subcommand.
@@ -72,6 +75,11 @@ class NxCheckpatch():
             sys.exit(0)
 
         match file_path.suffix:
+            case '.c':
+                self.checker = CChecker(file_path, 'c.scm')
+
+            case '.h':
+                pass
 
             case '.rs':
                 if shutil.which("rustfmt") is not None:
@@ -108,3 +116,8 @@ class NxCheckpatch():
                         ])
 
                 sys.exit(1)
+
+        if self.checker is None:
+            sys.exit(0)
+
+        self.checker.check_style()
